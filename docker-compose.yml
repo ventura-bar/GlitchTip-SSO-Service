@@ -1,0 +1,110 @@
+x-environment: &default-environment
+  DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
+  VALKEY_URL: "" # Set to enable Valkey. Ex: redis://valkey:6379
+  SECRET_KEY: change_me_to_something_random # best to run openssl rand -hex 32
+  EMAIL_URL: consolemail:// # Example smtp://email:password@smtp_url:port https://glitchtip.com/documentation/install#configuration
+  GLITCHTIP_DOMAIN: http://localhost:8090/ # Must match the proxy's public URL
+  DEFAULT_FROM_EMAIL: email@example.com
+  ENABLE_ADMIN: "True"
+  ENABLE_OPENAPI: "True"
+  ACCOUNT_EMAIL_VERIFICATION: "none" # Allow proxy-created users to log in without email confirmation
+
+x-depends_on: &default-depends_on
+  - postgres
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+    restart: unless-stopped
+    volumes:
+      - pg-data:/var/lib/postgresql
+
+  # ---------------------------------------------------------------------------
+  # Keycloak — SSO provider (local dev only, dev-file DB)
+  # Admin UI: http://localhost:8180  admin / admin
+  # Test users in keycloak/realm.json  (password: password)
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0.0
+    command: start-dev --import-realm
+    environment:
+      KC_DB: dev-file
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json
+    ports:
+      - "8180:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e \"GET /realms/glitchtip/.well-known/openid-configuration HTTP/1.1\\r\\nhost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3;cat <&3 | grep -q '200 OK'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # GlitchTip — internal only, accessed via sso-proxy
+  # ---------------------------------------------------------------------------
+  web:
+    image: glitchtip/glitchtip:6
+    depends_on: *default-depends_on
+    environment:
+      <<: *default-environment
+      SERVER_ROLE: all_in_one
+    restart: unless-stopped
+    volumes:
+      - uploads:/code/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8000), timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # Creates the superuser + proxy admin API token (all scopes). Runs once, then exits.
+  glitchtip-init:
+    image: glitchtip/glitchtip:6
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      <<: *default-environment
+      DJANGO_SUPERUSER_EMAIL: admin@example.com
+      DJANGO_SUPERUSER_PASSWORD: admin123
+      GLITCHTIP_PROXY_TOKEN: glitchtip-proxy-admin-token-change-me-in-prod
+    volumes:
+      - ./glitchtip-init.py:/glitchtip-init.py
+    entrypoint: ["python"]
+    command: ["/glitchtip-init.py"]
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # SSO Proxy — public entry point on :8090
+  # Handles OIDC with Keycloak, syncs groups → GlitchTip orgs, proxies traffic
+  # ---------------------------------------------------------------------------
+  sso-proxy:
+    build: ./sso-proxy
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    ports:
+      - "8090:8080"
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080               # internal
+      KEYCLOAK_EXTERNAL_URL: http://localhost:8180      # browser-facing
+      KEYCLOAK_REALM: glitchtip
+      KEYCLOAK_CLIENT_ID: sso-proxy
+      KEYCLOAK_CLIENT_SECRET: sso-proxy-secret
+      GLITCHTIP_URL: http://web:8000
+      GLITCHTIP_PROXY_TOKEN: glitchtip-proxy-admin-token-change-me-in-prod
+      PROXY_BASE_URL: http://localhost:8090
+      SESSION_SECRET: change_me_to_something_random
+    restart: unless-stopped
+
+volumes:
+  pg-data:
+  uploads:

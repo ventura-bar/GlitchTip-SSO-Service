@@ -1,0 +1,58 @@
+{
+  "realm": "glitchtip",
+  "enabled": true,
+  "sslRequired": "external",
+  "groups": [
+    { "name": "platform-team" },
+    { "name": "backend-team" }
+  ],
+  "users": [
+    {
+      "username": "bar",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "bar@example.com",
+      "firstName": "Bar",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["platform-team"]
+    },
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "alice@example.com",
+      "firstName": "Alice",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["platform-team", "backend-team"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "sso-proxy",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "sso-proxy-secret",
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:8090/sso-callback"],
+      "postLogoutRedirectUris": ["http://localhost:8090/"],
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "groups-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "groups",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}
