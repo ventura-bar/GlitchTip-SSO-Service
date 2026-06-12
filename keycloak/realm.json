@@ -4,7 +4,16 @@
   "sslRequired": "external",
   "groups": [
     { "name": "platform-team" },
-    { "name": "backend-team" }
+    { "name": "backend-team" },
+    { "name": "frontend-team" },
+    { "name": "devops-team" },
+    { "name": "data-team" },
+    { "name": "security-team" },
+    { "name": "qa-team" },
+    { "name": "mobile-team" },
+    { "name": "infra-team" },
+    { "name": "product-team" },
+    { "name": "ml-team" }
   ],
   "users": [
     {
@@ -26,6 +35,106 @@
       "lastName": "User",
       "credentials": [{ "type": "password", "value": "password", "temporary": false }],
       "groups": ["platform-team", "backend-team"]
+    },
+    {
+      "username": "charlie",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "charlie@example.com",
+      "firstName": "Charlie",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["frontend-team", "platform-team"]
+    },
+    {
+      "username": "diana",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "diana@example.com",
+      "firstName": "Diana",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["devops-team", "security-team"]
+    },
+    {
+      "username": "eve",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "eve@example.com",
+      "firstName": "Eve",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["data-team", "backend-team"]
+    },
+    {
+      "username": "frank",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "frank@example.com",
+      "firstName": "Frank",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["frontend-team", "devops-team"]
+    },
+    {
+      "username": "grace",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "grace@example.com",
+      "firstName": "Grace",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["data-team", "security-team", "platform-team"]
+    },
+    {
+      "username": "henry",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "henry@example.com",
+      "firstName": "Henry",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["qa-team", "backend-team"]
+    },
+    {
+      "username": "iris",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "iris@example.com",
+      "firstName": "Iris",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["mobile-team", "frontend-team"]
+    },
+    {
+      "username": "jack",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "jack@example.com",
+      "firstName": "Jack",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["infra-team", "devops-team"]
+    },
+    {
+      "username": "kate",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "kate@example.com",
+      "firstName": "Kate",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["product-team", "platform-team"]
+    },
+    {
+      "username": "leo",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "leo@example.com",
+      "firstName": "Leo",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "groups": ["ml-team", "data-team"]
     }
   ],
   "clients": [
@@ -36,7 +145,7 @@
       "secret": "sso-proxy-secret",
       "directAccessGrantsEnabled": true,
       "redirectUris": ["http://localhost:8090/sso-callback"],
-      "postLogoutRedirectUris": ["http://localhost:8090/"],
+      "attributes": { "post.logout.redirect.uris": "http://localhost:8090/*" },
       "protocol": "openid-connect",
       "protocolMappers": [
         {

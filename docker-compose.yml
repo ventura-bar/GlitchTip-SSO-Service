@@ -1,9 +1,9 @@
 x-environment: &default-environment
-  DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
-  VALKEY_URL: "" # Set to enable Valkey. Ex: redis://valkey:6379
-  SECRET_KEY: change_me_to_something_random # best to run openssl rand -hex 32
+  DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+  VALKEY_URL: redis://valkey:6379
+  SECRET_KEY: ${SECRET_KEY}
   EMAIL_URL: consolemail:// # Example smtp://email:password@smtp_url:port https://glitchtip.com/documentation/install#configuration
-  GLITCHTIP_DOMAIN: http://localhost:8090/ # Must match the proxy's public URL
+  GLITCHTIP_DOMAIN: http://localhost:8090 # Must match the proxy's public URL
   DEFAULT_FROM_EMAIL: email@example.com
   ENABLE_ADMIN: "True"
   ENABLE_OPENAPI: "True"
@@ -11,19 +11,26 @@ x-environment: &default-environment
 
 x-depends_on: &default-depends_on
   - postgres
+  - valkey
 
 services:
   postgres:
     image: postgres:18
     environment:
-      POSTGRES_HOST_AUTH_METHOD: "trust"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     restart: unless-stopped
     volumes:
       - pg-data:/var/lib/postgresql
 
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    volumes:
+      - valkey-data:/data
+
   # ---------------------------------------------------------------------------
   # Keycloak — SSO provider (local dev only, dev-file DB)
-  # Admin UI: http://localhost:8180  admin / admin
+  # Admin UI: http://localhost:8180  admin / <KEYCLOAK_ADMIN_PASSWORD>
   # Test users in keycloak/realm.json  (password: password)
   # ---------------------------------------------------------------------------
   keycloak:
@@ -32,7 +39,7 @@ services:
     environment:
       KC_DB: dev-file
       KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
     volumes:
       - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json
     ports:
@@ -53,6 +60,8 @@ services:
     environment:
       <<: *default-environment
       SERVER_ROLE: all_in_one
+    ports:
+      - "8000:8000"   # internal/direct access — mirrors the OpenShift internal route
     restart: unless-stopped
     volumes:
       - uploads:/code/uploads
@@ -71,9 +80,9 @@ services:
         condition: service_healthy
     environment:
       <<: *default-environment
-      DJANGO_SUPERUSER_EMAIL: admin@example.com
-      DJANGO_SUPERUSER_PASSWORD: admin123
-      GLITCHTIP_PROXY_TOKEN: glitchtip-proxy-admin-token-change-me-in-prod
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD}
+      GLITCHTIP_PROXY_TOKEN: ${GLITCHTIP_PROXY_TOKEN}
     volumes:
       - ./glitchtip-init.py:/glitchtip-init.py
     entrypoint: ["python"]
@@ -98,13 +107,17 @@ services:
       KEYCLOAK_EXTERNAL_URL: http://localhost:8180      # browser-facing
       KEYCLOAK_REALM: glitchtip
       KEYCLOAK_CLIENT_ID: sso-proxy
-      KEYCLOAK_CLIENT_SECRET: sso-proxy-secret
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
       GLITCHTIP_URL: http://web:8000
-      GLITCHTIP_PROXY_TOKEN: glitchtip-proxy-admin-token-change-me-in-prod
+      GLITCHTIP_PROXY_TOKEN: ${GLITCHTIP_PROXY_TOKEN}
       PROXY_BASE_URL: http://localhost:8090
-      SESSION_SECRET: change_me_to_something_random
+      SESSION_SECRET: ${SESSION_SECRET}
+      REDIS_URL: redis://valkey:6379
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD}
     restart: unless-stopped
 
 volumes:
   pg-data:
   uploads:
+  valkey-data:
