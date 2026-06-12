@@ -1,0 +1,5 @@
+[MESSAGES CONTROL]
+# too-few-public-methods: pytest test classes often have just one test method — that's fine
+# unused-argument:        pytest fixture parameters look unused to pylint but are injected by pytest
+disable=too-few-public-methods,
+        unused-argument
