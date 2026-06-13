@@ -1,0 +1,98 @@
+replicaCount: 2
+
+image:
+  repository: glitchtip-sso-proxy
+  tag: dev
+  # Use "Never" when loading into kind with `kind load docker-image`
+  pullPolicy: IfNotPresent
+
+# Non-sensitive env vars → ConfigMap
+config:
+  KEYCLOAK_URL: ""           # Internal pod-to-pod URL (e.g. http://keycloak:8080)
+  KEYCLOAK_EXTERNAL_URL: ""  # Browser-facing URL (e.g. https://sso.example.com)
+  KEYCLOAK_REALM: glitchtip
+  KEYCLOAK_CLIENT_ID: sso-proxy
+  GLITCHTIP_URL: ""          # Internal pod-to-pod URL (e.g. http://glitchtip:8000)
+  PROXY_BASE_URL: ""         # Public URL of the proxy (e.g. https://glitchtip.example.com)
+  REDIS_URL: ""              # Redis/Valkey URL (e.g. redis://valkey:6379)
+  DJANGO_SUPERUSER_EMAIL: admin@example.com
+
+# Sensitive env vars → Secret (set via --set or external secrets manager)
+secrets:
+  SESSION_SECRET: ""
+  KEYCLOAK_CLIENT_SECRET: ""
+  GLITCHTIP_PROXY_TOKEN: ""
+  DJANGO_SUPERUSER_PASSWORD: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: glitchtip.local
+  annotations: {}
+  tls: []
+
+# OpenShift Route (alternative to Ingress — enable when deploying on OpenShift)
+openshift:
+  route:
+    enabled: false
+    host: ""
+    path: /
+    tls:
+      termination: edge      # edge | passthrough | reencrypt
+      insecureEdgeTerminationPolicy: Redirect
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# OpenShift-compatible security context (runAsNonRoot + explicit UID)
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3
+
+serviceAccount:
+  create: true
+  name: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -181,16 +181,185 @@ docker compose stop keycloak && docker compose rm -f keycloak && docker compose 
 
 Or add it via the Admin UI: **Clients → sso-proxy → Settings → Valid post logout redirect URIs → add `http://localhost:8090/`**.
 
+## Testing
+
+### Automated test suite (pytest + Playwright)
+
+```bash
+cd tests
+pip install -r requirements.txt
+playwright install chromium
+
+# Set required env vars (these match docker-compose defaults):
+export GLITCHTIP_PROXY_TOKEN=changeme
+export KEYCLOAK_ADMIN_PASSWORD=admin
+
+pytest -v
+```
+
+13 tests across two files:
+
+| File | Coverage |
+|---|---|
+| `test_auth.py` | SSO login flow, org redirect, localStorage bridge, session persistence, logout |
+| `test_dsn.py` | DSN/envelope bypass (no session required), event storage and retrieval |
+
+Tests run against `http://localhost:8090` by default. Override for other environments:
+
+```bash
+PROXY_URL=http://my-cluster GLITCHTIP_URL=http://my-glitchtip pytest -v
+```
+
+---
+
+## Kubernetes / Helm
+
+### Prerequisites
+
+```bash
+brew install kind helm k6
+```
+
+### Local dev — kind cluster
+
+One script provisions a kind cluster, builds and loads the Docker image, deploys the Helm umbrella chart, then runs the pytest suite against it:
+
+```bash
+bash scripts/kind-deploy.sh
+```
+
+The script:
+1. Creates a 3-node kind cluster (`helm/kind-cluster.yaml`) with ports 80→8888 and 443→8889
+2. Installs nginx-ingress (pinned to control-plane node)
+3. Builds `glitchtip-sso-proxy:dev` (arm64) and loads it into the cluster
+4. Runs `helm dep update` + `helm upgrade --install` with `values-kind.yaml` overrides
+5. Port-forwards GlitchTip to `:8003` and Valkey to `:6381`, then runs `pytest tests/ -v` against the nginx ingress on `:8888`
+
+> **Note:** Keycloak is not deployed in kind — the script reuses the docker-compose Keycloak running on the host at `http://localhost:8180`. Run `docker compose up -d keycloak` before deploying.
+
+### Production — OpenShift
+
+The umbrella chart ships a separate values file for production deployments where PostgreSQL, Redis, and Red Hat SSO are managed externally:
+
+```bash
+helm upgrade --install glitchtip helm/glitchtip-umbrella \
+  -f helm/glitchtip-umbrella/values-production.yaml \
+  --set sso-proxy.config.KEYCLOAK_URL=https://sso.apps.cluster.company.com \
+  --set sso-proxy.config.GLITCHTIP_URL=http://glitchtip-web:8000 \
+  --set sso-proxy.config.PROXY_BASE_URL=https://glitchtip.apps.cluster.company.com \
+  --set sso-proxy.config.REDIS_URL=redis://external-redis:6379 \
+  --set sso-proxy.secrets.SESSION_SECRET="$(openssl rand -hex 32)" \
+  --set sso-proxy.secrets.KEYCLOAK_CLIENT_SECRET="your-client-secret" \
+  --set sso-proxy.secrets.GLITCHTIP_PROXY_TOKEN="your-admin-token"
+```
+
+Key differences from dev:
+- `postgresql`, `valkey`, `keycloak` sub-charts disabled
+- `openshift.route.enabled: true` — creates an OpenShift Route instead of Ingress
+- SSO proxy runs as `USER 1000` (numeric UID required by OpenShift SCCs)
+- `readOnlyRootFilesystem: true`, all capabilities dropped
+
+### Helm chart structure
+
+```
+helm/
+├── kind-cluster.yaml              # kind cluster config (1 control-plane + 2 workers)
+├── sso-proxy/                     # Standalone sso-proxy chart
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── templates/
+│       ├── deployment.yaml        # envFrom ConfigMap + Secret; readOnlyRootFilesystem
+│       ├── service.yaml
+│       ├── configmap.yaml
+│       ├── secret.yaml
+│       ├── ingress.yaml
+│       ├── route.yaml             # OpenShift Route (gated by openshift.route.enabled)
+│       └── hpa.yaml               # autoscaling/v2, 2–10 replicas at 70% CPU
+└── glitchtip-umbrella/            # Umbrella chart
+    ├── Chart.yaml                 # deps: glitchtip, sso-proxy, postgresql, valkey, keycloak
+    ├── values.yaml                # Dev defaults (all services enabled)
+    ├── values-kind.yaml           # imagePullPolicy: Never, localhost ingress
+    ├── values-production.yaml     # OpenShift: external services, Route enabled
+    └── templates/
+        ├── glitchtip-init-job.yaml        # post-install/post-upgrade Job (replaces init container)
+        └── keycloak-realm-configmap.yaml  # Mounts realm.json into Keycloak pod
+```
+
+---
+
+## Load Testing
+
+Requires k6 (`brew install k6`). Tests are in `load-tests/`.
+
+```bash
+# Run all three suites and save JSON results to load-tests/results/<timestamp>/
+bash load-tests/run.sh all
+
+# Run individual suites
+bash load-tests/run.sh dsn   # DSN ingestion only
+bash load-tests/run.sh web   # Dashboard browsing only
+bash load-tests/run.sh full  # Combined realistic scenario
+```
+
+| Suite | Scenario | Target |
+|---|---|---|
+| `k6-dsn.js` | 100 simulated websites sending error events | Ramp to 500 RPS, p95 < 500ms, < 1% errors |
+| `k6-web.js` | 200 concurrent authenticated dashboard users | p95 < 2s, < 2% errors |
+| `k6-full.js` | Combined 80% DSN + 20% web (realistic production mix) | Both thresholds together |
+
+The load test is sized for **100 websites × 500 average users** (50,000 users total). The 500 RPS DSN target is 35× the steady-state production rate, confirming headroom for traffic spikes.
+
+Override defaults via env vars:
+```bash
+PROXY_URL=http://my-cluster DSN_KEY=abc123 bash load-tests/run.sh dsn
+```
+
+---
+
+## Architecture Reference
+
+See [sso-proxy/ARCHITECTURE.md](sso-proxy/ARCHITECTURE.md) for a full description of:
+- OIDC authorization code flow
+- localStorage bridge (why it exists and how it works)
+- Multi-pod stateless design with Redis key layout
+- Session lifetimes and all environment variables
+
+---
+
 ## File Structure
 
 ```
 .
-├── docker-compose.yml        # Stack definition
-├── glitchtip-init.py         # Bootstrap script (superuser + admin API token)
+├── docker-compose.yml             # Local dev stack
+├── glitchtip-init.py              # Bootstrap: superuser + admin API token
 ├── keycloak/
-│   └── realm.json            # Keycloak realm, users, groups, client config
-└── sso-proxy/
-    ├── Dockerfile
-    ├── requirements.txt
-    └── main.py               # FastAPI proxy: OIDC handler + org sync + reverse proxy
+│   └── realm.json                 # Keycloak realm, users, groups, client config
+├── sso-proxy/
+│   ├── Dockerfile                 # Non-root USER 1000 (OpenShift SCC compatible)
+│   ├── requirements.txt
+│   ├── main.py                    # FastAPI app entry point + /healthz
+│   ├── config.py                  # Env var config
+│   ├── store.py                   # Redis client singleton
+│   ├── glitchtip.py               # GlitchTip API helpers (create user/org/member)
+│   ├── routes/
+│   │   ├── auth.py                # /sso-login, /sso-callback, /sso-logout
+│   │   └── proxy.py               # /{path:path} catch-all reverse proxy
+│   └── ARCHITECTURE.md            # Detailed design doc
+├── tests/
+│   ├── conftest.py                # Fixtures: browser, base URLs, API helpers
+│   ├── test_auth.py               # SSO flow browser tests (Playwright)
+│   └── test_dsn.py                # DSN bypass + event ingestion tests
+├── helm/
+│   ├── kind-cluster.yaml
+│   ├── sso-proxy/                 # sso-proxy Helm chart
+│   └── glitchtip-umbrella/        # Umbrella chart
+├── scripts/
+│   └── kind-deploy.sh             # End-to-end: create cluster → deploy → test
+├── load-tests/
+│   ├── k6-dsn.js
+│   ├── k6-web.js
+│   ├── k6-full.js
+│   └── run.sh
+└── test-app/
+    └── app.py                     # Manual demo app for rich-event SDK testing
 ```

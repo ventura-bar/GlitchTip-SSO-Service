@@ -1,0 +1,15 @@
+{{- if .Values.keycloak.enabled -}}
+# Mounts keycloak/realm.json into the Keycloak pod so the glitchtip realm
+# is imported automatically on first start (--import-realm flag).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  realm.json: |
+{{ .Files.Get "files/realm.json" | indent 4 }}
+{{- end }}

@@ -1,0 +1,40 @@
+apiVersion: v2
+name: glitchtip-umbrella
+description: |
+  Umbrella chart for GlitchTip + SSO proxy.
+
+  For local dev (kind): all services included (postgres, valkey, keycloak).
+  For production (OpenShift): external postgres/redis/SSO — disable bundled services
+  via values-production.yaml.
+type: application
+version: 0.1.0
+appVersion: "6.0.0"
+
+dependencies:
+  # GlitchTip error-tracking application
+  - name: glitchtip
+    version: ">=8.0.0"
+    repository: "https://gitlab.com/api/v4/projects/16325141/packages/helm/stable"
+    condition: glitchtip.enabled
+
+  # Our SSO proxy (local chart reference)
+  - name: sso-proxy
+    version: "0.1.0"
+    repository: "file://../sso-proxy"
+    condition: sso-proxy.enabled
+
+  # Bundled dependencies — disable all three in production and supply external URLs
+  - name: postgresql
+    version: ">=16.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+
+  - name: valkey
+    version: ">=3.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: valkey.enabled
+
+  - name: keycloak
+    version: ">=24.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: keycloak.enabled

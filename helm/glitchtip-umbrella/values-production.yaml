@@ -1,0 +1,84 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Production / OpenShift overrides.
+#
+# All bundled services disabled — supply external connection strings.
+# Secrets should come from an external secrets manager (e.g. HashiCorp Vault,
+# OpenShift Secrets, AWS Secrets Manager) not --set on the CLI.
+#
+# Apply:
+#   helm upgrade --install glitchtip . -f values.yaml -f values-production.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Disable all bundled infrastructure — provided externally in OpenShift
+postgresql:
+  enabled: false
+
+valkey:
+  enabled: false
+
+keycloak:
+  enabled: false
+
+
+# ── GlitchTip ─────────────────────────────────────────────────────────────────
+glitchtip:
+  replicaCount: 3
+  env:
+    # External PostgreSQL 15 — provided by OpenShift DBaaS or managed service
+    DATABASE_URL: ""         # postgresql://user:pass@host:5432/glitchtip
+    # External Redis — provided by managed Redis service
+    VALKEY_URL: ""           # redis://host:6379
+    VTASKS_CONCURRENCY: "40"
+    GRANIAN_WORKERS: "2"
+    DATABASE_POOL_MAX_SIZE: "30"
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+
+
+# ── SSO Proxy ─────────────────────────────────────────────────────────────────
+sso-proxy:
+  replicaCount: 3
+
+  image:
+    # Production registry — replace with your actual image registry
+    repository: registry.example.com/glitchtip/sso-proxy
+    tag: "1.0.0"
+    pullPolicy: Always
+
+  config:
+    # External Red Hat SSO (Keycloak)
+    KEYCLOAK_URL:          ""   # https://sso.apps.cluster.example.com
+    KEYCLOAK_EXTERNAL_URL: ""   # Same as above for OpenShift (pod-to-pod and browser use same URL)
+    KEYCLOAK_REALM:        ""   # Your production realm name
+    KEYCLOAK_CLIENT_ID:    sso-proxy
+    GLITCHTIP_URL:         ""   # Internal GlitchTip service URL
+    PROXY_BASE_URL:        ""   # https://glitchtip.apps.cluster.example.com
+    REDIS_URL:             ""   # redis://external-redis-host:6379
+    DJANGO_SUPERUSER_EMAIL: ""  # admin@your-domain.com
+
+  # Use OpenShift Route instead of Ingress
+  ingress:
+    enabled: false
+
+  openshift:
+    route:
+      enabled: true
+      host: ""             # glitchtip.apps.cluster.example.com
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+
+  hpa:
+    minReplicas: 3
+    maxReplicas: 20
+
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }

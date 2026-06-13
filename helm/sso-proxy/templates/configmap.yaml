@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sso-proxy.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sso-proxy.labels" . | nindent 4 }}
+data:
+  KEYCLOAK_URL:           {{ .Values.config.KEYCLOAK_URL | quote }}
+  KEYCLOAK_EXTERNAL_URL:  {{ .Values.config.KEYCLOAK_EXTERNAL_URL | quote }}
+  KEYCLOAK_REALM:         {{ .Values.config.KEYCLOAK_REALM | quote }}
+  KEYCLOAK_CLIENT_ID:     {{ .Values.config.KEYCLOAK_CLIENT_ID | quote }}
+  GLITCHTIP_URL:          {{ .Values.config.GLITCHTIP_URL | quote }}
+  PROXY_BASE_URL:         {{ .Values.config.PROXY_BASE_URL | quote }}
+  REDIS_URL:              {{ .Values.config.REDIS_URL | quote }}
+  DJANGO_SUPERUSER_EMAIL: {{ .Values.config.DJANGO_SUPERUSER_EMAIL | quote }}

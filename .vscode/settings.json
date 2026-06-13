@@ -1,0 +1,10 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/sso-proxy/.venv/bin/python3",
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.python"
+  },
+  "pylint.args": [
+    "--init-hook",
+    "import sys; sys.path.insert(0, 'sso-proxy')"
+  ]
+}

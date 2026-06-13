@@ -3,7 +3,8 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(messa
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 
 import store
@@ -20,4 +21,18 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(auth_router)
+
+
+# Register /healthz BEFORE the proxy router — the proxy has a /{path:path} catch-all
+# that would intercept it if included first.
+@app.get("/healthz", include_in_schema=False)
+async def healthz():
+    """Liveness/readiness probe — returns 200 when Redis is reachable."""
+    try:
+        await store.redis.ping()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Redis unavailable") from exc
+    return JSONResponse({"status": "ok"})
+
+
 app.include_router(proxy_router)

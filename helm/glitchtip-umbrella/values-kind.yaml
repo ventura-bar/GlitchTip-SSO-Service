@@ -1,0 +1,56 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# kind cluster overrides — apply on top of values.yaml.
+#
+# Key differences vs dev defaults:
+#   - imagePullPolicy: Never (images pre-loaded with `kind load docker-image`)
+#   - All service URLs use in-cluster DNS names
+#   - Ingress uses localhost with no TLS
+# ──────────────────────────────────────────────────────────────────────────────
+
+glitchtip:
+  image:
+    # Pre-loaded into kind with `kind load docker-image`
+    pullPolicy: Never
+
+  glitchtip:
+    domain: "http://localhost:8888"
+    database:
+      existingSecret: "glitchtip-db-creds"
+      existingSecretKey: DATABASE_URL
+    valkey:
+      existingSecret: "glitchtip-db-creds"
+      existingSecretKey: REDIS_URL
+
+
+sso-proxy:
+  image:
+    pullPolicy: Never
+    tag: dev
+
+  config:
+    # Keycloak is not deployed in kind — reuse the docker-compose Keycloak on the host
+    KEYCLOAK_URL:          "http://host.docker.internal:8180"
+    KEYCLOAK_EXTERNAL_URL: "http://localhost:8180"
+    KEYCLOAK_REALM:        glitchtip
+    KEYCLOAK_CLIENT_ID:    sso-proxy
+    GLITCHTIP_URL:         "http://glitchtip-web:80"
+    PROXY_BASE_URL:        "http://localhost:8888"
+    REDIS_URL:             "redis://glitchtip-valkey-primary:6379"
+
+  ingress:
+    enabled: true
+    className: nginx
+    host: localhost
+    annotations:
+      nginx.ingress.kubernetes.io/use-regex: "true"
+
+
+# Keycloak disabled in kind — docker-compose's Keycloak at :8180 is used instead
+keycloak:
+  enabled: false
+
+
+# PostgreSQL image pre-loaded into kind
+postgresql:
+  image:
+    pullPolicy: Never

@@ -1,4 +1,14 @@
+# Secrets
 .env
+
+# Python
 .venv/
 __pycache__/
 *.pyc
+
+# Helm chart dependencies (regenerated with `helm dep update`)
+helm/glitchtip-umbrella/charts/
+
+# Load test raw output (huge JSON streams — summaries are committed instead)
+load-tests/results/**/*.json
+!load-tests/results/**/*-summary.json

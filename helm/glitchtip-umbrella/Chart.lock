@@ -1,0 +1,18 @@
+dependencies:
+- name: glitchtip
+  repository: https://gitlab.com/api/v4/projects/16325141/packages/helm/stable
+  version: 8.2.0
+- name: sso-proxy
+  repository: file://../sso-proxy
+  version: 0.1.0
+- name: postgresql
+  repository: https://charts.bitnami.com/bitnami
+  version: 18.7.3
+- name: valkey
+  repository: https://charts.bitnami.com/bitnami
+  version: 6.1.5
+- name: keycloak
+  repository: https://charts.bitnami.com/bitnami
+  version: 25.2.0
+digest: sha256:e7b9ce9307311149097bb31200e3bb3922ec5217bf93fc839a68c016ce98c47e
+generated: "2026-06-13T02:19:21.163884+03:00"

@@ -1,0 +1,24 @@
+{{- if .Values.openshift.route.enabled -}}
+# OpenShift Route — used instead of Ingress on OpenShift clusters.
+# Enable with: openshift.route.enabled=true, ingress.enabled=false
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "sso-proxy.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sso-proxy.labels" . | nindent 4 }}
+spec:
+  host: {{ .Values.openshift.route.host | quote }}
+  path: {{ .Values.openshift.route.path | default "/" }}
+  to:
+    kind: Service
+    name: {{ include "sso-proxy.fullname" . }}
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: {{ .Values.openshift.route.tls.termination }}
+    insecureEdgeTerminationPolicy: {{ .Values.openshift.route.tls.insecureEdgeTerminationPolicy | default "Redirect" }}
+  wildcardPolicy: None
+{{- end }}

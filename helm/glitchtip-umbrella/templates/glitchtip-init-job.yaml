@@ -1,0 +1,98 @@
+{{- if .Values.glitchtip.enabled -}}
+# Kubernetes Job replacing the docker-compose glitchtip-init one-shot container.
+# Runs after GlitchTip is deployed and creates the Django superuser + proxy API token.
+# Hooks ensure it re-runs on every upgrade so the token stays in sync.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-glitchtip-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: glitchtip-init
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: init
+          image: glitchtip/glitchtip:{{ .Values.glitchtip.image.tag | default "6" }}
+          imagePullPolicy: {{ .Values.glitchtip.image.pullPolicy | default "IfNotPresent" }}
+          command: ["python", "/scripts/glitchtip-init.py"]
+          env:
+            # Database and Redis from the db-creds secret (created by glitchtip-db-creds.yaml)
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-db-creds
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-db-creds
+                  key: REDIS_URL
+            # Django secret key from GlitchTip's config
+            - name: SECRET_KEY
+              {{- if .Values.glitchtip.glitchtip.secretKey }}
+              value: {{ .Values.glitchtip.glitchtip.secretKey | quote }}
+              {{- else }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "glitchtip.glitchtip.existingSecret required when secretKey is empty" .Values.glitchtip.glitchtip.existingSecret }}
+                  key: {{ .Values.glitchtip.glitchtip.existingSecretKey | default "SECRET_KEY" }}
+              {{- end }}
+            # Superuser credentials and proxy token from sso-proxy secret
+            - name: DJANGO_SUPERUSER_EMAIL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-sso-proxy
+                  key: DJANGO_SUPERUSER_EMAIL
+                  optional: true
+            - name: DJANGO_SUPERUSER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-sso-proxy
+                  key: DJANGO_SUPERUSER_PASSWORD
+            - name: GLITCHTIP_PROXY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-sso-proxy
+                  key: GLITCHTIP_PROXY_TOKEN
+          volumeMounts:
+            - name: init-script
+              mountPath: /scripts
+      volumes:
+        - name: init-script
+          configMap:
+            name: {{ .Release.Name }}-glitchtip-init-script
+{{- end }}
+---
+{{- if .Values.glitchtip.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-glitchtip-init-script
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+data:
+  glitchtip-init.py: |
+{{ .Files.Get "files/glitchtip-init.py" | indent 4 }}
+{{- end }}

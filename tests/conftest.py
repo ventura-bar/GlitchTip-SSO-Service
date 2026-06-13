@@ -9,6 +9,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -21,14 +22,21 @@ from playwright.sync_api import Page
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Override any of these via env vars to run against a kind/remote deployment:
-#   PROXY_URL=http://localhost:8080 GLITCHTIP_URL=http://localhost:8081 pytest
+#   PROXY_URL=http://localhost:8888 GLITCHTIP_URL=http://localhost:8003 pytest
 PROXY_URL      = os.environ.get("PROXY_URL",      "http://localhost:8090")
+# GLITCHTIP_URL should be a direct URL to GlitchTip (bypasses sso-proxy).
+# In docker-compose: http://localhost:8000
+# In kind: port-forward the glitchtip-web service, e.g. http://localhost:8003
 GLITCHTIP_URL  = os.environ.get("GLITCHTIP_URL",  "http://localhost:8000")
 KEYCLOAK_URL   = os.environ.get("KEYCLOAK_URL",   "http://localhost:8180")
 REDIS_URL      = os.environ.get("REDIS_URL",      "redis://localhost:6379")
 KC_REALM       = os.environ.get("KC_REALM",       "glitchtip")
 ADMIN_TOKEN    = os.environ["GLITCHTIP_PROXY_TOKEN"]
 KC_ADMIN_PASS  = os.environ["KEYCLOAK_ADMIN_PASSWORD"]
+
+# Netloc of the proxy (host:port), used to detect when the browser has landed
+# back on the proxy after the SSO callback.
+_PROXY_NETLOC = urlparse(PROXY_URL).netloc
 
 
 # ── Low-level helpers ──────────────────────────────────────────────────────────
@@ -68,7 +76,7 @@ def login(page: Page, username: str = "alice", password: str = "password") -> st
     page.click("#kc-login")
     # Wait until the bridge page has redirected us away from /sso-callback
     page.wait_for_url(
-        lambda url: "localhost:8090" in url and "sso-callback" not in url,
+        lambda url: _PROXY_NETLOC in url and "sso-callback" not in url,
         timeout=15_000,
     )
     return page.url

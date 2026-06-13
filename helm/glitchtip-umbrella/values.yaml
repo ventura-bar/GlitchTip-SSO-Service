@@ -1,0 +1,172 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Umbrella default values — suitable for local development.
+# Override with values-kind.yaml (kind cluster) or values-production.yaml (OpenShift).
+#
+# Required secrets — pass at install time:
+#   helm upgrade --install glitchtip . \
+#     --set sso-proxy.secrets.SESSION_SECRET="$(openssl rand -hex 32)" \
+#     --set sso-proxy.secrets.DJANGO_SUPERUSER_PASSWORD="changeme" \
+#     --set sso-proxy.secrets.KEYCLOAK_CLIENT_SECRET="sso-proxy-secret" \
+#     --set sso-proxy.secrets.GLITCHTIP_PROXY_TOKEN="mytoken" \
+#     --set postgresql.auth.password="pgpass" \
+#     --set glitchtip.glitchtip.secretKey="$(openssl rand -hex 32)"
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Sub-chart toggles ─────────────────────────────────────────────────────────
+glitchtip:
+  enabled: true
+
+sso-proxy:
+  enabled: true
+
+postgresql:
+  enabled: true
+
+valkey:
+  enabled: true
+
+keycloak:
+  enabled: true
+
+
+# ── GlitchTip (glitchtip/glitchtip chart v8) ──────────────────────────────────
+# NOTE: Keys here follow the sub-chart's own values structure.
+#   glitchtip.glitchtip.*  → chart's internal `glitchtip:` config block
+#   glitchtip.web.*        → web deployment config
+#   glitchtip.extraEnvVars → extra env vars for all components
+glitchtip:
+  enabled: true
+  image:
+    tag: "6"
+
+  # Core GlitchTip config (secretKey, domain, DB/Redis references)
+  glitchtip:
+    # Required — set via --set glitchtip.glitchtip.secretKey=
+    secretKey: ""
+    # Public-facing proxy URL used to generate absolute links
+    domain: ""
+    database:
+      # Name of a Secret containing DATABASE_URL.
+      # Created by glitchtip-db-creds.yaml when postgresql.enabled=true.
+      # Required when postgresql.enabled=false.
+      existingSecret: ""
+      existingSecretKey: DATABASE_URL
+    valkey:
+      # Name of a Secret containing REDIS_URL.
+      existingSecret: ""
+      existingSecretKey: REDIS_URL
+
+  # Disable GlitchTip chart's own postgresql (CNPG) and valkey sub-charts.
+  # We use Bitnami's postgresql and valkey from the umbrella chart.
+  postgresql:
+    enabled: false
+  valkey:
+    enabled: false
+
+  web:
+    replicaCount: 2
+    embedWorker: true    # All-in-one: worker runs inside the web pod
+    resources:
+      requests: { cpu: 200m, memory: 256Mi }
+      limits:   { cpu: 1000m, memory: 1Gi }
+
+  worker:
+    enabled: false       # Dedicated worker disabled — embedWorker covers it
+
+  extraEnvVars:
+    - name: EMAIL_URL
+      value: "consolemail://"
+    - name: DEFAULT_FROM_EMAIL
+      value: "glitchtip@example.com"
+    - name: ENABLE_ADMIN
+      value: "True"
+    - name: ACCOUNT_EMAIL_VERIFICATION
+      value: "none"
+    - name: VTASKS_CONCURRENCY
+      value: "40"
+    - name: GRANIAN_WORKERS
+      value: "2"
+    - name: DATABASE_POOL_MAX_SIZE
+      value: "30"
+
+
+# ── SSO Proxy ─────────────────────────────────────────────────────────────────
+sso-proxy:
+  enabled: true
+  replicaCount: 2
+
+  config:
+    KEYCLOAK_URL:           ""   # Set to internal keycloak service URL
+    KEYCLOAK_EXTERNAL_URL:  ""   # Set to browser-facing Keycloak URL
+    KEYCLOAK_REALM:         glitchtip
+    KEYCLOAK_CLIENT_ID:     sso-proxy
+    GLITCHTIP_URL:          ""   # Set to internal GlitchTip service URL
+    PROXY_BASE_URL:         ""   # Set to public proxy URL
+    REDIS_URL:              ""   # e.g. redis://<release>-valkey-primary:6379
+    DJANGO_SUPERUSER_EMAIL: admin@example.com
+
+  secrets:
+    SESSION_SECRET:           ""  # Required
+    KEYCLOAK_CLIENT_SECRET:   ""  # Required
+    GLITCHTIP_PROXY_TOKEN:    ""  # Required — registered in GlitchTip by the init Job
+    DJANGO_SUPERUSER_PASSWORD: "" # Required
+
+  ingress:
+    enabled: true
+    className: nginx
+    host: glitchtip.local
+
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+
+# ── PostgreSQL (Bitnami) ──────────────────────────────────────────────────────
+postgresql:
+  enabled: true
+  auth:
+    username: glitchtip
+    password: ""    # Required — set via --set postgresql.auth.password=
+    database: glitchtip
+  primary:
+    resources:
+      requests: { cpu: 500m, memory: 512Mi }
+      limits:   { cpu: 2000m, memory: 2Gi }
+
+
+# ── Valkey / Redis (Bitnami) — used by sso-proxy ─────────────────────────────
+valkey:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false   # Enable and set password in production
+  master:
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+
+
+# ── Keycloak (Bitnami) — local dev only ───────────────────────────────────────
+keycloak:
+  enabled: true
+  auth:
+    adminUser: admin
+    adminPassword: ""   # Required — set via --set keycloak.auth.adminPassword=
+  extraEnvVars:
+    - name: KC_DB
+      value: dev-file
+  extraVolumes:
+    - name: realm-config
+      configMap:
+        name: keycloak-realm
+  extraVolumeMounts:
+    - name: realm-config
+      mountPath: /opt/keycloak/data/import
+  args:
+    - start-dev
+    - --import-realm
+  resources:
+    requests: { cpu: 500m, memory: 512Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }

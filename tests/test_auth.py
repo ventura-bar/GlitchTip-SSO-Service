@@ -10,7 +10,7 @@ Keycloak test credentials: username / password
 """
 import re
 
-from conftest import PROXY_URL, login
+from conftest import PROXY_URL, _PROXY_NETLOC, login
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ class TestFreshLogin:
         """
         # ensure_nogroup_user is autouse=True so it runs automatically
         final_url = login(fresh_page, "nogroup")
-        assert "localhost:8090" in final_url, f"Still on Keycloak: {final_url}"
+        assert _PROXY_NETLOC in final_url, f"Still on Keycloak: {final_url}"
         assert "sso-callback" not in final_url
         assert not re.search(r"/[a-z0-9-]+-team/issues/", final_url), (
             f"No-group user should not land on an org page: {final_url}"
@@ -124,7 +124,7 @@ class TestSessionPersistence:
         # Wait until the full cycle settles: proxy→Keycloak→sso-callback→bridge→destination
         fresh_page.wait_for_url(
             lambda url: (
-                "localhost:8090" in url
+                _PROXY_NETLOC in url
                 and "sso-callback" not in url
                 and "localhost:8180" not in url
             ),
@@ -134,7 +134,7 @@ class TestSessionPersistence:
         assert not _at_keycloak(fresh_page), (
             "Expired session should be transparently renewed — Keycloak form must not appear"
         )
-        assert "localhost:8090" in fresh_page.url
+        assert _PROXY_NETLOC in fresh_page.url
 
 
 class TestLoginPageHandling:
